@@ -1,0 +1,13 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+*.db
+*.db-shm
+*.db-wal
+*.vsidx
+*.suo
+/API_FedEx_Quote/.vs/API_FedEx_Quote/v17/DocumentLayout.backup.json
+/API_FedEx_Quote/.vs/API_FedEx_Quote/v17/DocumentLayout.json
+*.cache
+/API_FedEx_Quote/obj/Debug/API_FedEx_Quote.sqlproj.FileListAbsolute.txt
