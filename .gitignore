@@ -11,3 +11,9 @@
 /API_FedEx_Quote/.vs/API_FedEx_Quote/v17/DocumentLayout.json
 *.cache
 /API_FedEx_Quote/obj/Debug/API_FedEx_Quote.sqlproj.FileListAbsolute.txt
+/API_FedEx_Quote/bin/Debug/API_FedEx_Quote.dacpac
+*.dll
+*.pdb
+*.xml
+*.Up2Date
+/API_FedEx_Quote/obj/Debug/API_FEDEX_QUOTE.generated.sql
