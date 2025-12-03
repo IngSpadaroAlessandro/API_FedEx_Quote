@@ -17,3 +17,7 @@
 *.xml
 *.Up2Date
 /API_FedEx_Quote/obj/Debug/API_FEDEX_QUOTE.generated.sql
+/API_FedEx_Quote/bin/Debug/API_FedEx_Quote.publish.sql
+/API_FedEx_Quote/bin/Debug/DeploymentReport.txt
+/API_FedEx_Quote/API_FedEx_Quote.jfm
+/API_FedEx_Quote/API_FedEx_Quote.sqlproj

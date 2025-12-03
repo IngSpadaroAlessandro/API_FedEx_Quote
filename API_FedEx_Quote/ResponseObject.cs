@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using static API_FedEx_Quote.StoredProcedure;
 
 namespace API_FedEx_Quote
 {
@@ -24,7 +25,6 @@ namespace API_FedEx_Quote
         public string Message { get; set; }
     }
 
-
     public class FedExRateResponse
     {
         [JsonProperty("transactionId")]
@@ -43,7 +43,10 @@ namespace API_FedEx_Quote
     public class FedExOutput
     {
         [JsonProperty("rateReplyDetails")]
+        [JsonConverter(typeof(SingleOrArrayConverter<RateReplyDetail>))]
         public List<RateReplyDetail> RateReplyDetails { get; set; }
+        public string QuoteDate { get; set; }
+        public bool Encoded { get; set; }
     }
 
     public class RateReplyDetail
@@ -58,9 +61,11 @@ namespace API_FedEx_Quote
         public string PackagingType { get; set; }
 
         [JsonProperty("customerMessages")]
+        [JsonConverter(typeof(SingleOrArrayConverter<CustomerMessage>))]
         public List<CustomerMessage> CustomerMessages { get; set; }
 
         [JsonProperty("ratedShipmentDetails")]
+        [JsonConverter(typeof(SingleOrArrayConverter<RatedShipmentDetail>))]
         public List<RatedShipmentDetail> RatedShipmentDetails { get; set; }
 
         [JsonProperty("anonymouslyAllowable")]
@@ -114,6 +119,15 @@ namespace API_FedEx_Quote
         [JsonProperty("totalDutiesAndTaxes")]
         public decimal TotalDutiesAndTaxes { get; set; }
 
+        [JsonProperty("totalNetTransportationAndPickupCharge")]
+        public Money TotalNetTransportationAndPickupCharge { get; set; }
+
+        [JsonProperty("totalNetFedExTransportationAndPickupCharge")]
+        public Money TotalNetFedExTransportationAndPickupCharge { get; set; }
+
+        [JsonProperty("pickupRateDetail")]
+        public PickupRateDetail PickupRateDetail { get; set; }
+
         [JsonProperty("totalNetChargeWithDutiesAndTaxes")]
         public decimal TotalNetChargeWithDutiesAndTaxes { get; set; }
 
@@ -126,16 +140,23 @@ namespace API_FedEx_Quote
         [JsonProperty("shipmentRateDetail")]
         public ShipmentRateDetail ShipmentRateDetail { get; set; }
 
-        [JsonProperty("pickupRateDetail")]
-        public PickupRateDetail PickupRateDetail { get; set; }
 
         [JsonProperty("ratedPackages")]
+        [JsonConverter(typeof(SingleOrArrayConverter<RatedPackage>))]
         public List<RatedPackage> RatedPackages { get; set; }
 
         [JsonProperty("currency")]
         public string Currency { get; set; }
     }
 
+    public class Money
+    {
+        [JsonProperty("amount")]
+        public decimal Amount { get; set; }
+
+        [JsonProperty("currency")]
+        public string Currency { get; set; }
+    }
     public class PickupRateDetail
     {
         [JsonProperty("rateType")]
@@ -169,6 +190,7 @@ namespace API_FedEx_Quote
         public decimal TotalFreightDiscount { get; set; }
 
         [JsonProperty("surCharges")]
+        [JsonConverter(typeof(SingleOrArrayConverter<Surcharge>))]
         public List<Surcharge> SurCharges { get; set; }
 
         [JsonProperty("pricingCode")]
@@ -268,6 +290,7 @@ namespace API_FedEx_Quote
         public decimal TotalFreightDiscounts { get; set; }
 
         [JsonProperty("surcharges")]
+        [JsonConverter(typeof(SingleOrArrayConverter<Surcharge>))]
         public List<Surcharge> Surcharges { get; set; }
 
         [JsonProperty("currency")]
@@ -319,6 +342,7 @@ namespace API_FedEx_Quote
         public string Code { get; set; }
 
         [JsonProperty("names")]
+        [JsonConverter(typeof(SingleOrArrayConverter<ServiceName>))]
         public List<ServiceName> Names { get; set; }
 
         [JsonProperty("operatingOrgCodes")]

@@ -1,9 +1,12 @@
 using Microsoft.SqlServer.Server;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Data.SqlTypes;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -19,8 +22,205 @@ namespace API_FedEx_Quote
         private static DateTime _tokenExpiry;
 
         [Microsoft.SqlServer.Server.SqlProcedure(Name = "FedEx_Quote_Rates_20251108")]
-        public static void ApiQuoteRateProcedure(string postAuthData, string postCredentialsData, string version, string cancelBy, string prnDallaCreate)
+        public static void ApiQuoteRateProcedure(SqlString jsonBody, string postAuthData)
         {
+            string jsonBodyString = jsonBody.ToString();
+            string bearerTokenFedex = string.Empty;
+            // call of the first api for fedex token  generation
+            try
+            {
+
+                //get the token that fedex generates by calling an api
+                bearerTokenFedex = GetTokenFedexFromFirstApi(postAuthData);
+                SendLongMessage("bearerTokenFedex  " + bearerTokenFedex);
+            }
+            catch (Exception ex)
+            {
+                SendLongMessage("error in GetTokenFedexFromFirstApi" + ex);
+                HandleGeneralException(ex);
+            }
+
+            DataTable pickUpCreateData = new DataTable("pickUpCreateData");
+            //AddPickUpCreateDataColumns(pickUpCreateData);
+
+            string APIUrl = "https://apis-sandbox.fedex.com/rate/v1/rates/quotes";
+            //string APIUrl = "https://apis.fedex.com/pickup/v1/pickups";
+
+            try
+            {
+                // Log initial information
+                SqlContext.Pipe.Send("sono arrivati questi dati:");
+                SqlContext.Pipe.Send("------------------------------------------");
+                SqlContext.Pipe.Send("jsonBody");
+                //SqlContext.Pipe.Send(jsonBodyString);
+                SqlContext.Pipe.Send("------------------------------------------");
+
+
+                System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12 | System.Net.SecurityProtocolType.Tls13;
+                WebPermission permission = new WebPermission(NetworkAccess.Connect, APIUrl);
+                permission.AddPermission(NetworkAccess.Connect, APIUrl);
+                permission.AddPermission(NetworkAccess.Accept, APIUrl);
+                permission.Demand();
+
+                IEnumerator myConnectEnum = permission.ConnectList;
+
+                while (myConnectEnum.MoveNext())
+                { }
+
+                IEnumerator myAcceptEnum = permission.AcceptList;
+
+                // Configure HTTP request
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(APIUrl);
+                string requestBody = jsonBodyString;
+                SqlContext.Pipe.Send("Popolo HTTP request");
+                byte[] bytes;
+                bytes = Encoding.ASCII.GetBytes(requestBody);
+
+
+                request.ContentType = "application/json";
+                request.Accept = "application/json";
+                request.Method = "POST";
+                request.Headers.Add("X-locale", "en_US");
+                request.Headers.Add("Authorization", "Bearer " + bearerTokenFedex);
+                request.AutomaticDecompression = DecompressionMethods.None;
+                request.Headers.Remove(HttpRequestHeader.AcceptEncoding);
+                //request.Headers.Add("x-customer-transaction-id", "BeT");// solo se si e in production
+
+                //SetRequestHeaders(request);
+                SqlContext.Pipe.Send("request: " + request);
+
+                // Prepare request body
+                Stream requestStream = request.GetRequestStream();
+                requestStream.Write(bytes, 0, bytes.Length);
+                requestStream.Close();
+
+                //SqlContext.Pipe.Send("requestBody: " + requestBody);
+                // Process HTTP response
+                HttpWebResponse response = null;
+                try
+                {
+                    response = (HttpWebResponse)request.GetResponse();
+                    //SqlContext.Pipe.Send("StatusCode: " + response.StatusCode);
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        SqlContext.Pipe.Send("StatusCode: " + response.StatusCode);
+                        Stream responseStream = null;
+                        string responseStr = "";
+                        try
+                        {
+                            responseStream = response.GetResponseStream();
+                            responseStr = new StreamReader(responseStream).ReadToEnd();
+                        }
+                        catch (Exception ex)
+                        {
+                            SqlContext.Pipe.Send("responseStream ex: " + ex);
+                            HandleGeneralException(ex);
+                            throw;
+                        }
+
+                        // Parse JSON response and populate trackingData
+                        var jsonObject = JObject.Parse(responseStr);
+                        SendLongMessage("jsonObject: " + jsonObject);
+
+                        // Convert back to JSON string
+                        responseStr = jsonObject.ToString(Formatting.Indented);
+
+
+                        // Deserialize the JSON into a dynamic object
+                        var responseObject = JsonConvert.DeserializeObject<FedExRateResponse>(responseStr);
+                        //SendLongMessage("responseObject: " + responseObject);
+
+                        if (responseObject?.Output == null) return;
+
+                        var trackingData = responseObject.Output;
+
+
+                    }
+                    else
+                    {
+                        HandleErrorResponse(response);
+                    }
+
+                }
+                catch (WebException ex)
+                {
+                    HandleWebException(ex);
+                }
+                finally
+                {
+                    response?.Close();
+                }
+
+                //try
+                //{
+                //    // Ensure the response is closed before continuing.
+                //    response.Close();
+
+
+
+                //    // Define connection string
+                //    //string connString = "Data Source=localhost\\BETCLOUD;Initial Catalog=HUB_API_FORNITORI;User ID=sa;Password=Sa2020BeT";
+                //    string connString = "Data Source=DESKTOP-6DFRDG6\\SQLEXPRESS;Initial Catalog=API_Ship_v2;User ID=sample;Password=sample;";
+
+
+                //    using (TransactionScope scope = new TransactionScope(TransactionScopeOption.Required,
+                //               new TransactionOptions
+                //               {
+                //                   IsolationLevel = System.Transactions.IsolationLevel.ReadCommitted, // Adjust based on your requirements
+                //                   Timeout = TimeSpan.FromMinutes(5) // Set appropriate timeout
+                //               }))
+                //    {
+                //        using (SqlConnection connection = new SqlConnection(connString))
+                //        {
+                //            connection.Open();
+
+                //            // Insert into fedex_pickUp_temp_create
+                //            using (SqlCommand cmd = new SqlCommand("dbo.Fedex_PickUp_Create_ImportData_20250401", connection))
+                //            {
+                //                cmd.CommandType = CommandType.StoredProcedure;
+
+                //                // Define and add the parameter
+                //                SqlParameter param = new SqlParameter
+                //                {
+                //                    ParameterName = "@DataToInsertPickUpCreate",
+                //                    SqlDbType = SqlDbType.Structured,
+                //                    Value = pickUpCreateData,
+                //                    TypeName = "dbo.fedex_pickUp_temp_create"
+                //                };
+                //                cmd.Parameters.Add(param);
+
+                //                SendLongMessage("param: " + param);
+                //                cmd.ExecuteNonQuery();
+                //            }
+
+                //            SendLongMessage("InsertDataToDatabase in fedex_pickUp_temp_create: " + response.StatusCode);
+
+                //        }
+
+                //        // Complete the transaction
+                //        scope.Complete();
+                //    }
+
+                //}
+                //catch (Exception ex)
+                //{
+                //    // Handle any exceptions that occur
+                //    SendLongMessage("Error2: " + ex.Message);
+                //}
+                //finally
+                //{
+                //    // Ensure proper cleanup (if response is not yet closed)
+                //    if (response != null)
+                //    {
+                //        response.Close();
+                //    }
+                //}
+
+            }
+            catch (Exception ex)
+            {
+                HandleGeneralException(ex);
+            }
 
         }
 
@@ -159,6 +359,7 @@ namespace API_FedEx_Quote
             SendLongMessage("Handled exception: " + ex.Message);
         }
 
+
         // Helper method to send messages in chunks
         private static void SendLongMessage(string message)
         {
@@ -170,7 +371,6 @@ namespace API_FedEx_Quote
                 SqlContext.Pipe.Send(chunk);
             }
         }
-
         // Helper method to check token expiration and retrieve a new token if necessary
         public static string GetTokenFedexFromFirstApi(string postData)
         {
@@ -258,6 +458,26 @@ namespace API_FedEx_Quote
             errorDataTable.Columns.Add("TransactionId", typeof(string));
             errorDataTable.Columns.Add("Code", typeof(string));
             errorDataTable.Columns.Add("Message", typeof(string));
+        }     
+
+        //Check if the tag is a list 
+        public class SingleOrArrayConverter<T> : JsonConverter
+        {
+            public override bool CanConvert(Type objectType)
+                => objectType == typeof(List<T>);
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                var token = JToken.Load(reader);
+                if (token.Type == JTokenType.Array)
+                    return token.ToObject<List<T>>(serializer);
+
+                return new List<T> { token.ToObject<T>(serializer) };
+            }
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+                => serializer.Serialize(writer, value);
         }
+
     }
 }
