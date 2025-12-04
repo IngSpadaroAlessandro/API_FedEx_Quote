@@ -45,8 +45,24 @@ namespace API_FedEx_Quote
         [JsonProperty("rateReplyDetails")]
         [JsonConverter(typeof(SingleOrArrayConverter<RateReplyDetail>))]
         public List<RateReplyDetail> RateReplyDetails { get; set; }
-        public string QuoteDate { get; set; }
+
+        [JsonProperty("alerts")]
+        [JsonConverter(typeof(SingleOrArrayConverter<Alert>))]
+        public List<Alert> Alerts { get; set; } = new List<Alert>();
+        public DateTime QuoteDate { get; set; }
         public bool Encoded { get; set; }
+    }
+
+    public class Alert
+    {
+        [JsonProperty("code")]
+        public string Code { get; set; }
+
+        [JsonProperty("message")]
+        public string Message { get; set; }
+
+        [JsonProperty("alertType")]
+        public string AlertType { get; set; }
     }
 
     public class RateReplyDetail
@@ -297,10 +313,15 @@ namespace API_FedEx_Quote
         public string Currency { get; set; }
     }
 
+
+
     public class OperationalDetail
     {
         [JsonProperty("originLocationIds")]
         public string OriginLocationIds { get; set; }
+
+        [JsonProperty("commitDays")]
+        public string CommitDays { get; set; }
 
         [JsonProperty("serviceCode")]
         public string ServiceCode { get; set; }
@@ -308,27 +329,82 @@ namespace API_FedEx_Quote
         [JsonProperty("airportId")]
         public string AirportId { get; set; }
 
-        [JsonProperty("astraDescription")]
-        public string AstraDescription { get; set; }
+        [JsonProperty("scac")]
+        public string Scac { get; set; }
+
+        [JsonProperty("originServiceAreas")]
+        public string OriginServiceAreas { get; set; }
+
+        [JsonProperty("deliveryDay")]
+        public string DeliveryDay { get; set; }
+
+        [JsonProperty("originLocationNumbers")]
+        public int? OriginLocationNumbers { get; set; }
 
         [JsonProperty("destinationPostalCode")]
         public string DestinationPostalCode { get; set; }
 
         [JsonProperty("commitDate")]
-        public DateTimeOffset? CommitDate { get; set; }
+        public string CommitDate { get; set; }   // string because you said you store dates as string
 
-        [JsonProperty("transitTime")]
-        public string TransitTime { get; set; }
+        [JsonProperty("astraDescription")]
+        public string AstraDescription { get; set; }
+
+        [JsonProperty("deliveryDate")]
+        public string DeliveryDate { get; set; }
+
+        [JsonProperty("deliveryEligibilities")]
+        public string DeliveryEligibilities { get; set; }
+
+        [JsonProperty("ineligibleForMoneyBackGuarantee")]
+        public bool? IneligibleForMoneyBackGuarantee { get; set; }
+
+        [JsonProperty("maximumTransitTime")]
+        public string MaximumTransitTime { get; set; }
+
+        [JsonProperty("astraPlannedServiceLevel")]
+        public string AstraPlannedServiceLevel { get; set; }
 
         [JsonProperty("destinationLocationIds")]
         public string DestinationLocationIds { get; set; }
 
-        [JsonProperty("stateOrProvinceCodes")]
-        public string StateOrProvinceCodes { get; set; }
+        [JsonProperty("destinationLocationStateOrProvinceCodes")]
+        public string DestinationLocationStateOrProvinceCodes { get; set; }
+
+        [JsonProperty("transitTime")]
+        public string TransitTime { get; set; }
+
+        [JsonProperty("packagingCode")]
+        public string PackagingCode { get; set; }
+
+        [JsonProperty("destinationLocationNumbers")]
+        public int? DestinationLocationNumbers { get; set; }
+
+        [JsonProperty("publishedDeliveryTime")]
+        public string PublishedDeliveryTime { get; set; }
 
         [JsonProperty("countryCodes")]
         public string CountryCodes { get; set; }
+
+        [JsonProperty("stateOrProvinceCodes")]
+        public string StateOrProvinceCodes { get; set; }
+
+        [JsonProperty("ursaPrefixCode")]
+        public string UrsaPrefixCode { get; set; }
+
+        [JsonProperty("ursaSuffixCode")]
+        public string UrsaSuffixCode { get; set; }
+
+        [JsonProperty("destinationServiceAreas")]
+        public string DestinationServiceAreas { get; set; }
+
+        [JsonProperty("originPostalCodes")]
+        public string OriginPostalCodes { get; set; }
+
+        [JsonProperty("customTransitTime")]
+        public string CustomTransitTime { get; set; }
     }
+
 
     public class ServiceDescription
     {

@@ -40,11 +40,18 @@ namespace API_FedEx_Quote
                 HandleGeneralException(ex);
             }
 
-            DataTable pickUpCreateData = new DataTable("pickUpCreateData");
-            //AddPickUpCreateDataColumns(pickUpCreateData);
-
             string APIUrl = "https://apis-sandbox.fedex.com/rate/v1/rates/quotes";
             //string APIUrl = "https://apis.fedex.com/pickup/v1/pickups";
+
+            // Create all DataTables
+            DataTable dtFedExRateResponse = FedExTableFactory.CreateDT_FedExRateResponse();
+            DataTable dtRateReplyDetail = FedExTableFactory.CreateDT_RateReplyDetail();
+            DataTable dtCustomerMessage = FedExTableFactory.CreateDT_CustomerMessage();
+            DataTable dtRatedShipmentDetail = FedExTableFactory.CreateDT_RatedShipmentDetail();
+            DataTable dtSurcharge = FedExTableFactory.CreateDT_Surcharge();
+            DataTable dtRatedPackage = FedExTableFactory.CreateDT_RatedPackage();
+            DataTable dtServiceName = FedExTableFactory.CreateDT_ServiceName();
+            DataTable dtAlert= FedExTableFactory.CreateDT_Alert();
 
             try
             {
@@ -87,7 +94,7 @@ namespace API_FedEx_Quote
                 //request.Headers.Add("x-customer-transaction-id", "BeT");// solo se si e in production
 
                 //SetRequestHeaders(request);
-                SqlContext.Pipe.Send("request: " + request);
+                //SqlContext.Pipe.Send("request: " + request);
 
                 // Prepare request body
                 Stream requestStream = request.GetRequestStream();
@@ -120,7 +127,7 @@ namespace API_FedEx_Quote
 
                         // Parse JSON response and populate trackingData
                         var jsonObject = JObject.Parse(responseStr);
-                        SendLongMessage("jsonObject: " + jsonObject);
+                        //SendLongMessage("jsonObject: " + jsonObject);
 
                         // Convert back to JSON string
                         responseStr = jsonObject.ToString(Formatting.Indented);
@@ -133,6 +140,87 @@ namespace API_FedEx_Quote
                         if (responseObject?.Output == null) return;
 
                         var trackingData = responseObject.Output;
+
+                        // Fill FedExRateResponse table
+                        FedExTableFactory.CreateRow_FedExRateResponse(dtFedExRateResponse, responseObject);
+
+                        // CustomerMessages
+                        if (trackingData != null)
+                        {
+                            foreach (var alert in trackingData.Alerts)
+                            {
+                                FedExTableFactory.CreateRow_Alert(dtAlert, alert, responseObject.CustomerTransactionId);
+
+                            }
+                        }
+
+                        // Iterate RateReplyDetails
+                        if (responseObject?.Output?.RateReplyDetails != null)
+                        {
+                            foreach (var rateReply in responseObject.Output.RateReplyDetails)
+                            {
+                                FedExTableFactory.CreateRow_RateReplyDetail(dtRateReplyDetail, rateReply, responseObject.CustomerTransactionId);
+
+                                // CustomerMessages
+                                if (rateReply?.CustomerMessages != null)
+                                {
+                                    foreach (var msg in rateReply.CustomerMessages)
+                                    {
+                                        FedExTableFactory.CreateRow_CustomerMessage(dtCustomerMessage, msg, responseObject.CustomerTransactionId);
+
+                                    }
+                                }
+
+                                // RatedShipmentDetails
+                                if (rateReply?.RatedShipmentDetails != null)
+                                {
+                                    foreach (var rsd in rateReply.RatedShipmentDetails)
+                                    {
+                                        FedExTableFactory.CreateRow_RatedShipmentDetail(dtRatedShipmentDetail, rsd, responseObject.CustomerTransactionId);
+
+
+                                        // Surcharges from ShipmentRateDetail
+                                        if (rsd?.ShipmentRateDetail?.SurCharges != null)
+                                        {
+                                            foreach (var surcharge in rsd.ShipmentRateDetail.SurCharges)
+                                            {
+
+                                                FedExTableFactory.CreateRow_Surcharge(dtSurcharge, surcharge, responseObject.CustomerTransactionId);
+
+                                            }
+                                        }
+
+                                        // RatedPackages
+                                        if (rsd?.RatedPackages != null)
+                                        {
+                                            foreach (var pkg in rsd.RatedPackages)
+                                            {
+                                                FedExTableFactory.CreateRow_RatedPackage(dtRatedPackage, pkg, responseObject.CustomerTransactionId);
+
+                                                // Surcharges from PackageRateDetail
+                                                if (pkg?.PackageRateDetail?.Surcharges != null)
+                                                {
+                                                    foreach (var surcharge in pkg.PackageRateDetail.Surcharges)
+                                                    {
+                                                        FedExTableFactory.CreateRow_Surcharge(dtSurcharge, surcharge, responseObject.CustomerTransactionId);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ServiceNames from ServiceDescription
+                                if (rateReply?.ServiceDescription?.Names != null)
+                                {
+                                    foreach (var name in rateReply.ServiceDescription.Names)
+                                    {
+                                        FedExTableFactory.CreateRow_ServiceName(dtServiceName, name, responseObject.CustomerTransactionId);
+                                    }
+                                }
+                            }
+                        }
+
 
 
                     }
@@ -151,70 +239,248 @@ namespace API_FedEx_Quote
                     response?.Close();
                 }
 
-                //try
-                //{
-                //    // Ensure the response is closed before continuing.
-                //    response.Close();
+                // Step 4: Insert Data into SQL Database
+                try
+                {
+                    string connString = "Data Source=DESKTOP-6DFRDG6\\SQLEXPRESS;Initial Catalog=API_Ship_v2;User ID=sample;Password=sample;";
+                    //string connString = "Data Source=localhost\\BETCLOUD;Initial Catalog=HUB_API_FORNITORI;User ID=sa;Password=Sa2020BeT";
+
+                    using (TransactionScope scope = new TransactionScope(TransactionScopeOption.Required,
+                       new TransactionOptions
+                       {
+                           IsolationLevel = System.Transactions.IsolationLevel.ReadCommitted, // Adjust based on your requirements
+                           Timeout = TimeSpan.FromMinutes(5) // Set appropriate timeout
+                       }))
+                    {
+                        using (SqlConnection connection = new SqlConnection(connString))
+                        {
+                            connection.Open();
+
+                            using (SqlCommand cmd = new SqlCommand())
+                            {
+                                cmd.Connection = connection;
+                                cmd.CommandType = CommandType.StoredProcedure;
+
+                                SqlContext.Pipe.Send("Rows: " + dtFedExRateResponse.Rows.Count);
+                                foreach (DataColumn col in dtFedExRateResponse.Columns)
+                                    SqlContext.Pipe.Send(col.ColumnName);
+
+
+                                // -------------------------
+                                // Execute Main quote SP
+                                // -------------------------
+                                try
+                                {
+                                    SqlContext.Pipe.Send("Starting Fedex_Quote_RateResponse_ImportData_Main_20251108...");
+
+                                    cmd.CommandText = "dbo.Fedex_Quote_RateResponse_ImportData_Main_20251108";
+                                    cmd.Parameters.Add(new SqlParameter
+                                    {
+                                        ParameterName = "@DataToInsertMain",
+                                        SqlDbType = SqlDbType.Structured,
+                                        Value = dtFedExRateResponse,
+                                        TypeName = "dbo.fedex_quote_rateresponse_temp"
+                                    });
+
+                                    SqlContext.Pipe.Send("Executing stored procedure…");
+
+                                    cmd.ExecuteNonQuery();
+
+                                    SqlContext.Pipe.Send("Stored procedure executed successfully.");
+                                }
+                                catch (SqlException ex)
+                                {
+                                    SqlContext.Pipe.Send("SQL ERROR occurred:");
+                                    SqlContext.Pipe.Send("Message: " + ex.Message);
+                                    SqlContext.Pipe.Send("Line: " + ex.LineNumber);
+                                    SqlContext.Pipe.Send("Procedure: " + ex.Procedure);
+                                    SqlContext.Pipe.Send("Error Number: " + ex.Number);
+
+                                    // optionally rethrow
+                                    // throw;
+                                }
+                                catch (Exception ex)
+                                {
+                                    SqlContext.Pipe.Send("GENERAL ERROR occurred:");
+                                    SqlContext.Pipe.Send("Message: " + ex.Message);
+
+                                    // optionally rethrow
+                                    // throw;
+                                }
+                                finally
+                                {
+                                    cmd.Parameters.Clear();
+                                    SqlContext.Pipe.Send("Parameters cleared.");
+                                }
+
+                                SqlContext.Pipe.Send($"Rows in DataTable: {dtFedExRateResponse.Rows.Count}");
+                                foreach (DataRow row in dtFedExRateResponse.Rows)
+                                {
+                                    SqlContext.Pipe.Send($"Row TransactionId: {row["TransactionId"]}, QuoteDate: {row["QuoteDate"]}");
+                                    SqlContext.Pipe.Send($"Row TransactionId: {row["TransactionId"]}, QuoteDate: {row["QuoteDate"]}");
+                                }
+
+
+                                // -------------------------
+                                // Execute Rate reply detail SP
+                                // -------------------------
+                                cmd.CommandText = "dbo.Fedex_Quote_Rate_Reply_Detail_Importdata_20251108";
+                                cmd.Parameters.Add(new SqlParameter
+                                {
+                                    ParameterName = "@DataToInsertRateReplyDetail",
+                                    SqlDbType = SqlDbType.Structured,
+                                    Value = dtRateReplyDetail,
+                                    TypeName = "dbo.fedex_quote_rate_reply_detail_temp"
+                                });
+                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.Clear();
+
+                                // -------------------------
+                                // Execute Customer message SP
+                                // -------------------------
+
+                                try
+                                {
+                                    SqlContext.Pipe.Send("Starting Fedex_Quote_Customer_Message_Importdata_20251108...");
 
 
 
-                //    // Define connection string
-                //    //string connString = "Data Source=localhost\\BETCLOUD;Initial Catalog=HUB_API_FORNITORI;User ID=sa;Password=Sa2020BeT";
-                //    string connString = "Data Source=DESKTOP-6DFRDG6\\SQLEXPRESS;Initial Catalog=API_Ship_v2;User ID=sample;Password=sample;";
+
+                                    cmd.CommandText = "dbo.Fedex_Quote_Customer_Message_Importdata_20251108";
+                                    cmd.Parameters.Add(new SqlParameter
+                                    {
+                                        ParameterName = "@DataToInsertCustomerMessage",
+                                        SqlDbType = SqlDbType.Structured,
+                                        Value = dtCustomerMessage,
+                                        TypeName = "dbo.fedex_quote_customer_message_temp"
+                                    });
 
 
-                //    using (TransactionScope scope = new TransactionScope(TransactionScopeOption.Required,
-                //               new TransactionOptions
-                //               {
-                //                   IsolationLevel = System.Transactions.IsolationLevel.ReadCommitted, // Adjust based on your requirements
-                //                   Timeout = TimeSpan.FromMinutes(5) // Set appropriate timeout
-                //               }))
-                //    {
-                //        using (SqlConnection connection = new SqlConnection(connString))
-                //        {
-                //            connection.Open();
 
-                //            // Insert into fedex_pickUp_temp_create
-                //            using (SqlCommand cmd = new SqlCommand("dbo.Fedex_PickUp_Create_ImportData_20250401", connection))
-                //            {
-                //                cmd.CommandType = CommandType.StoredProcedure;
+                                    SqlContext.Pipe.Send("Executing stored procedure…");
 
-                //                // Define and add the parameter
-                //                SqlParameter param = new SqlParameter
-                //                {
-                //                    ParameterName = "@DataToInsertPickUpCreate",
-                //                    SqlDbType = SqlDbType.Structured,
-                //                    Value = pickUpCreateData,
-                //                    TypeName = "dbo.fedex_pickUp_temp_create"
-                //                };
-                //                cmd.Parameters.Add(param);
+                                    cmd.ExecuteNonQuery();
 
-                //                SendLongMessage("param: " + param);
-                //                cmd.ExecuteNonQuery();
-                //            }
+                                    SqlContext.Pipe.Send("Stored procedure executed successfully.");
+                                }
+                                catch (SqlException ex)
+                                {
+                                    SqlContext.Pipe.Send("SQL ERROR occurred:");
+                                    SqlContext.Pipe.Send("Message ERR: " + ex.Message);
+                                    SqlContext.Pipe.Send("Line: " + ex.LineNumber);
+                                    SqlContext.Pipe.Send("Procedure: " + ex.Procedure);
+                                    SqlContext.Pipe.Send("Error Number: " + ex.Number);
 
-                //            SendLongMessage("InsertDataToDatabase in fedex_pickUp_temp_create: " + response.StatusCode);
+                                    // optionally rethrow
+                                    // throw;
+                                }
+                                catch (Exception ex)
+                                {
+                                    SqlContext.Pipe.Send("GENERAL ERROR occurred:");
+                                    SqlContext.Pipe.Send("Message ERR: " + ex.Message);
 
-                //        }
+                                    // optionally rethrow
+                                    // throw;
+                                }
+                                finally
+                                {
+                                    cmd.Parameters.Clear();
+                                    SqlContext.Pipe.Send("Parameters cleared.");
+                                }
 
-                //        // Complete the transaction
-                //        scope.Complete();
-                //    }
+                                SqlContext.Pipe.Send($"Rows in DataTable: {dtCustomerMessage.Rows.Count}");
+                                foreach (DataRow row in dtCustomerMessage.Rows)
+                                {
+                                    SqlContext.Pipe.Send($"Row TransactionId: {row["TransactionId"]}, Message: {row["Message"]}");
+                                    SqlContext.Pipe.Send($"Row code: {row["code"]}");
+                                }
 
-                //}
-                //catch (Exception ex)
-                //{
-                //    // Handle any exceptions that occur
-                //    SendLongMessage("Error2: " + ex.Message);
-                //}
-                //finally
-                //{
-                //    // Ensure proper cleanup (if response is not yet closed)
-                //    if (response != null)
-                //    {
-                //        response.Close();
-                //    }
-                //}
+
+                                // -------------------------
+                                // Execute Rated Shipment Detail SP
+                                // -------------------------
+                                cmd.CommandText = "dbo.Fedex_Quote_Rated_Shipment_Detail_Importdata_20251108";
+                                cmd.Parameters.Add(new SqlParameter
+                                {
+                                    ParameterName = "@DataToInserRatedShipmentDetail",
+                                    SqlDbType = SqlDbType.Structured,
+                                    Value = dtRatedShipmentDetail,
+                                    TypeName = "dbo.fedex_quote_rated_shipment_detail_temp"
+                                });
+                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.Clear();
+
+                                // -------------------------
+                                // Execute Rated Surcharge SP
+                                // -------------------------
+                                cmd.CommandText = "dbo.Fedex_Quote_Surcharge_Importdata_20251108";
+                                cmd.Parameters.Add(new SqlParameter
+                                {
+                                    ParameterName = "@DataToInsertSurcharge",
+                                    SqlDbType = SqlDbType.Structured,
+                                    Value = dtSurcharge,
+                                    TypeName = "dbo.fedex_quote_surcharge_temp"
+                                });
+                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.Clear();
+
+                                // -------------------------
+                                // Execute Rated  package SP
+                                // -------------------------
+                                cmd.CommandText = "dbo.Fedex_Quote_RatedPackage_ImportData_20251108";
+                                cmd.Parameters.Add(new SqlParameter
+                                {
+                                    ParameterName = "@DataToInsertRatedPackage",
+                                    SqlDbType = SqlDbType.Structured,
+                                    Value = dtRatedPackage,
+                                    TypeName = "dbo.fedex_quote_ratedpackage_temp"
+                                });
+                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.Clear();
+
+                                // -------------------------
+                                // Execute Rated Service Name  SP
+                                // -------------------------
+                                cmd.CommandText = "dbo.Fedex_Quote_ServiceName_ImportData_20251108";
+                                cmd.Parameters.Add(new SqlParameter
+                                {
+                                    ParameterName = "@DataToInsertServiceName",
+                                    SqlDbType = SqlDbType.Structured,
+                                    Value = dtServiceName,
+                                    TypeName = "dbo.fedex_quote_service_name_temp"
+                                });
+                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.Clear();
+
+                                // -------------------------
+                                // Execute alerts SP
+                                // -------------------------
+                                cmd.CommandText = "dbo.Fedex_Quote_Alert_ImportData_Main_20251108";
+                                cmd.Parameters.Add(new SqlParameter
+                                {
+                                    ParameterName = "@DataToInsertAlert",
+                                    SqlDbType = SqlDbType.Structured,
+                                    Value = dtServiceName,
+                                    TypeName = "dbo.fedex_quote_alert_temp"
+                                });
+                                cmd.ExecuteNonQuery();
+                                cmd.Parameters.Clear();
+
+
+
+                            }
+                        }
+
+                        // Complete the transaction
+                        scope.Complete();
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    SendLongMessage("Database Error: " + ex.Message);
+                }
+
 
             }
             catch (Exception ex)
@@ -375,7 +641,7 @@ namespace API_FedEx_Quote
         public static string GetTokenFedexFromFirstApi(string postData)
         {
             string APIUrl = "https://apis-sandbox.fedex.com/oauth/token";
-            //string APIUrl = "https://apis.fedex.com/oauth/token";
+            // string APIUrl = "https://apis.fedex.com/oauth/token";
             string tokenFedexCreated = string.Empty;
 
             try
@@ -458,7 +724,7 @@ namespace API_FedEx_Quote
             errorDataTable.Columns.Add("TransactionId", typeof(string));
             errorDataTable.Columns.Add("Code", typeof(string));
             errorDataTable.Columns.Add("Message", typeof(string));
-        }     
+        }
 
         //Check if the tag is a list 
         public class SingleOrArrayConverter<T> : JsonConverter
