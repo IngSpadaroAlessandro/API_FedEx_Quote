@@ -261,11 +261,6 @@ namespace API_FedEx_Quote
                                 cmd.Connection = connection;
                                 cmd.CommandType = CommandType.StoredProcedure;
 
-                                SqlContext.Pipe.Send("Rows: " + dtFedExRateResponse.Rows.Count);
-                                foreach (DataColumn col in dtFedExRateResponse.Columns)
-                                    SqlContext.Pipe.Send(col.ColumnName);
-
-
                                 // -------------------------
                                 // Execute Main quote SP
                                 // -------------------------
@@ -311,13 +306,6 @@ namespace API_FedEx_Quote
                                 {
                                     cmd.Parameters.Clear();
                                     SqlContext.Pipe.Send("Parameters cleared.");
-                                }
-
-                                SqlContext.Pipe.Send($"Rows in DataTable: {dtFedExRateResponse.Rows.Count}");
-                                foreach (DataRow row in dtFedExRateResponse.Rows)
-                                {
-                                    SqlContext.Pipe.Send($"Row TransactionId: {row["TransactionId"]}, QuoteDate: {row["QuoteDate"]}");
-                                    SqlContext.Pipe.Send($"Row TransactionId: {row["TransactionId"]}, QuoteDate: {row["QuoteDate"]}");
                                 }
 
 
@@ -388,13 +376,6 @@ namespace API_FedEx_Quote
                                     SqlContext.Pipe.Send("Parameters cleared.");
                                 }
 
-                                SqlContext.Pipe.Send($"Rows in DataTable: {dtCustomerMessage.Rows.Count}");
-                                foreach (DataRow row in dtCustomerMessage.Rows)
-                                {
-                                    SqlContext.Pipe.Send($"Row TransactionId: {row["TransactionId"]}, Message: {row["Message"]}");
-                                    SqlContext.Pipe.Send($"Row code: {row["code"]}");
-                                }
-
 
                                 // -------------------------
                                 // Execute Rated Shipment Detail SP
@@ -460,7 +441,7 @@ namespace API_FedEx_Quote
                                 {
                                     ParameterName = "@DataToInsertAlert",
                                     SqlDbType = SqlDbType.Structured,
-                                    Value = dtServiceName,
+                                    Value = dtAlert,
                                     TypeName = "dbo.fedex_quote_alert_temp"
                                 });
                                 cmd.ExecuteNonQuery();
